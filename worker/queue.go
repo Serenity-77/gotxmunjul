@@ -1,9 +1,5 @@
 package worker
 
-import (
-    // "fmt"
-)
-
 type Queue struct {
     queue       chan interface{}
     pending     []interface{}
