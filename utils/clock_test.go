@@ -3,7 +3,6 @@ package utils
 import (
     "time"
     "sync"
-    // "fmt"
     "testing"
     "github.com/stretchr/testify/assert"
 )
