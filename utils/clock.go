@@ -145,6 +145,10 @@ func (t *Timer) Stop() bool {
 
 type RealClock struct{}
 
+func NewRealClock() *RealClock {
+    return &RealClock{}
+}
+
 func (rc *RealClock) Timer(d time.Duration) *Timer {
     rt := time.NewTimer(d)
     timer := &Timer{rt, rt.C}
