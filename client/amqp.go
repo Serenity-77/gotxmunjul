@@ -46,7 +46,7 @@ func (conn *amqpConnection) Channel() (IAmqpChannel, error) {
 }
 
 func (conn *amqpConnection) GetClock() txUtils.IClock {
-    return txUtils.NewRealClock()
+    return conn.clock
 }
 
 func _defaultDialFunc(dialUrl string, dialConfig *amqp.Config) (IAmqpConnection, error) {
