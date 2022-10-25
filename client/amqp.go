@@ -72,8 +72,6 @@ func NewAmqpClient(dialUrl string, dialConfig *amqp.Config, dialFunc AmqpDialFun
 
     if logger == nil {
         logger, _ = txLogger.CreateLogger(&txLogger.NullLoggerWriter{}, &txLogger.NullLoggerFormatter{}, "info")
-    } else {
-        logger = txLogger.DuplicateWithLogPrefix(logger, "AmqpClient")
     }
 
     client.logger = logger

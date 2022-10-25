@@ -5,6 +5,7 @@ import (
     "testing"
     "sync/atomic"
     "github.com/stretchr/testify/assert"
+    "github.com/sirupsen/logrus"
     amqp "github.com/rabbitmq/amqp091-go"
     txLogger "github.com/serenity-77/gotxmunjul/logger"
     txUtils  "github.com/serenity-77/gotxmunjul/utils"
@@ -59,15 +60,20 @@ func TestAmqpBasicConnection(t *testing.T) {
     assert.True(t, ok)
 }
 
+type noOpLoggerFormatter struct{}
+
+func (nf *noOpLoggerFormatter) Format(entry *logrus.Entry) ([]byte, error) {
+    return nil, nil
+}
+
 func TestAmqpBasicConnectionWithLogger(t *testing.T) {
-    logger, _ := txLogger.CreateLogger(&txLogger.NullLoggerWriter{}, &txLogger.NullLoggerFormatter{}, "info")
+    logger, _ := txLogger.CreateLogger(&txLogger.NullLoggerWriter{}, &noOpLoggerFormatter{}, "info")
     client, _ := NewAmqpClient(_DIAL_URL_TEST, &amqp.Config{}, FakeAmqpDialFunc, logger)
     assert.NotNil(t, client.logger)
     _, ok := client.logger.Out.(*txLogger.NullLoggerWriter)
     assert.True(t, ok)
-    _, ok = client.logger.Formatter.(*txLogger.TextFormatterWithPrefix)
+    _, ok = client.logger.Formatter.(*noOpLoggerFormatter)
     assert.True(t, ok)
-    assert.Equal(t, "AmqpClient", client.logger.Formatter.(*txLogger.TextFormatterWithPrefix).LogPrefix)
 }
 
 var _ IAmqpConnection   = (*FakeAmqpConnection)(nil)
@@ -237,4 +243,7 @@ func TestAmqpClientReconnect(t *testing.T) {
     for i := 0; i < 100; i++ {
         client.Channel()
     }
+}
+
+func TestAmqpClientDisconnect(t *testing.T) {
 }
