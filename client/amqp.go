@@ -120,7 +120,7 @@ func (c *AmqpClient) waitClose() {
         if reason, ok := <- closeChan; !ok {
 
         } else {
-            c.logger.Errorf("AmqpClient Disconnected: %#v\n", reason)
+            c.logger.Errorf("AmqpClient Disconnected: %#v", reason)
 
             connected := false
             reconnectInterval := 2
