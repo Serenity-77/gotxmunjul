@@ -1,16 +1,55 @@
 package client
 
 import (
+    "time"
+    "sync"
+    "github.com/sirupsen/logrus"
     amqp "github.com/rabbitmq/amqp091-go"
+    txLogger "github.com/serenity-77/gotxmunjul/logger"
+    txUtils "github.com/serenity-77/gotxmunjul/utils"
 )
 
-type AmqpClient struct {
-    conn        *amqp.Connection
-    dialUrl     string
-    dialConfig  *amqp.Config
+
+var _ IAmqpConnection   = (*amqpConnection)(nil)
+var _ IAmqpChannel      = (*amqp.Channel)(nil)
+
+type IAmqpConnection interface {
+    Channel()                       (IAmqpChannel, error)
+    NotifyClose(chan *amqp.Error)   chan *amqp.Error
+    GetClock()                      txUtils.IClock
 }
 
-var _dialFunc = func(dialUrl string, dialConfig *amqp.Config) (*amqp.Connection, error) {
+type IAmqpChannel interface {
+    QueueDeclare(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) (amqp.Queue, error)
+}
+
+type AmqpClient struct {
+    conn        IAmqpConnection
+    mu          sync.Mutex
+    dialUrl     string
+    dialConfig  *amqp.Config
+    dialFunc    AmqpDialFunc
+    logger      *logrus.Logger
+    disconnect  chan struct{}
+
+}
+
+type AmqpDialFunc   func(string, *amqp.Config) (IAmqpConnection, error)
+
+type amqpConnection struct {
+    *amqp.Connection
+    clock   txUtils.IClock
+}
+
+func (conn *amqpConnection) Channel() (IAmqpChannel, error) {
+    return conn.Connection.Channel()
+}
+
+func (conn *amqpConnection) GetClock() txUtils.IClock {
+    return txUtils.NewRealClock()
+}
+
+func _defaultDialFunc(dialUrl string, dialConfig *amqp.Config) (IAmqpConnection, error) {
     var (
         conn *amqp.Connection
         err error
@@ -20,44 +59,98 @@ var _dialFunc = func(dialUrl string, dialConfig *amqp.Config) (*amqp.Connection,
     } else {
         conn, err = amqp.DialConfig(dialUrl, *dialConfig)
     }
-    return conn, err
+
+    return &amqpConnection{conn, txUtils.NewRealClock()}, err
 }
 
-var _channelFunc = func(conn *amqp.Connection) (*amqp.Channel, error) {
-    return nil, nil
-}
-
-func SetDialFunc(dialFunc func(string, *amqp.Config) (*amqp.Connection, error)) {
-    _dialFunc = dialFunc
-}
-
-func SetChannelFunc(channelFunc func(*amqp.Connection) (*amqp.Channel, error)) {
-    _channelFunc = channelFunc
-}
-
-func NewAmqpClient(dialUrl string, dialConfig *amqp.Config) (*AmqpClient, error) {
-    client := &AmqpClient{}
-    client.dialUrl = dialUrl
-    client.dialConfig = dialConfig
-    if err := client.doConnect(); err != nil {
-        return nil, err
+func NewAmqpClient(dialUrl string, dialConfig *amqp.Config, dialFunc AmqpDialFunc, logger *logrus.Logger) (*AmqpClient, error) {
+    client := &AmqpClient{
+        dialUrl:    dialUrl,
+        dialConfig: dialConfig,
+        dialFunc:   dialFunc,
     }
+
+    if logger == nil {
+        logger, _ = txLogger.CreateLogger(&txLogger.NullLoggerWriter{}, &txLogger.NullLoggerFormatter{}, "info")
+    } else {
+        logger = txLogger.DuplicateWithLogPrefix(logger, "AmqpClient")
+    }
+
+    client.logger = logger
+
+    if err := client.doConnect(); err != nil {
+        client.logger = nil
+        if client.dialConfig != nil {
+            client.dialConfig = nil
+        }
+        client = nil
+        return client, err
+    }
+
+    go client.waitClose()
+
     return client, nil
 }
 
 
-func (client *AmqpClient) GetChannel() (*amqp.Channel, error) {
-    return _channelFunc(client.conn)
+func (c *AmqpClient) Channel() (IAmqpChannel, error) {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    return c.conn.Channel()
 }
 
 func (c *AmqpClient) doConnect() error {
-    if conn, err := _dialFunc(c.dialUrl, c.dialConfig); err != nil {
+    if c.dialFunc == nil {
+        c.dialFunc = _defaultDialFunc
+    }
+    if conn, err := c.dialFunc(c.dialUrl, c.dialConfig); err != nil {
         return err
     } else {
+        c.mu.Lock()
         c.conn = conn
-        // closeChan := make(chan *amqp.Error)
-        // closeChan = conn.NotifyClose(closeChan)
-        // go c.onClose(closeChan)
+        c.mu.Unlock()
         return nil
+    }
+}
+
+func (c *AmqpClient) waitClose() {
+    clock := c.conn.GetClock()
+
+    for {
+        closeChan := c.conn.NotifyClose(make(chan *amqp.Error))
+
+        if reason, ok := <- closeChan; !ok {
+
+        } else {
+            c.logger.Errorf("AmqpClient Disconnected: %#v\n", reason)
+
+            connected := false
+            reconnectInterval := 2
+
+            reconnectTimer := clock.Timer(time.Duration(reconnectInterval) * time.Second)
+
+            for !connected {
+                c.logger.Infof("Reconnecting AmqpClient in %d seconds", reconnectInterval)
+
+                if reconnectInterval == 10 {
+                    reconnectInterval = 0
+                }
+
+                select {
+                case <- reconnectTimer.C:
+                    if err := c.doConnect(); err != nil {
+                        c.logger.Errorf("AmqpClient reconnecting error: %#v", err)
+                        reconnectInterval += 2
+                        reconnectTimer.Reset(time.Duration(reconnectInterval) * time.Second)
+                    } else {
+                        connected = true
+                        reconnectTimer.Stop()
+                        c.logger.Infof("AmqpClient Connected")
+                    }
+                case <- c.disconnect:
+
+                }
+            }
+        }
     }
 }

@@ -1,67 +1,240 @@
 package client
 
 import (
+    "time"
     "testing"
+    "sync/atomic"
     "github.com/stretchr/testify/assert"
     amqp "github.com/rabbitmq/amqp091-go"
+    txLogger "github.com/serenity-77/gotxmunjul/logger"
+    txUtils  "github.com/serenity-77/gotxmunjul/utils"
 )
 
 const (
     _DIAL_URL_TEST = "amqp://guest_test:guest_test@host_test:5672"
 )
 
-func _checkConnType(client interface{}) bool {
-    _, ok := client.(*amqp.Connection)
-    return ok
+func _checkConnType(t *testing.T, conn interface{}) bool {
+    if _, ok := conn.(IAmqpConnection); !ok {
+        t.Errorf("%T does not implement IAmqpConnection", conn)
+        return false
+    } else if _, ok := conn.(*amqpConnection); !ok {
+        t.Errorf("%T is not of type *amqp.Connection", conn)
+        return false
+    }
+    return true
 }
 
-func _checkChannelType(channel interface{}) bool {
-    _, ok := channel.(*amqp.Channel)
-    return ok
+func _checkChannelType(t *testing.T, channel interface{}) bool {
+    if _, ok := channel.(IAmqpChannel); !ok {
+        t.Errorf("%T does not implement IAmqpChannel", channel)
+        return false
+    }
+    return true
 }
 
 type _dialFuncT struct {
     dialFuncCalled  bool
 }
 
-func (f *_dialFuncT) doDial (dialUrl string, dialConfig *amqp.Config) (*amqp.Connection, error) {
+func (f *_dialFuncT) doDial (dialUrl string, dialConfig *amqp.Config) (IAmqpConnection, error) {
     f.dialFuncCalled = true
-    return &amqp.Connection{}, nil
+    return &amqpConnection{&amqp.Connection{}, nil}, nil
 }
 
-type _channelFuncT struct {
-    channelFuncCalled   bool
-}
-
-
-func (f *_channelFuncT) getChannel(conn *amqp.Connection) (*amqp.Channel, error) {
-    f.channelFuncCalled = true
-    return &amqp.Channel{}, nil
-}
-
-
-func TestBasicWithSetDialFuncAndChannelFunc(t *testing.T) {
+func TestAmqpBasicConnection(t *testing.T) {
     dialFunc := &_dialFuncT{}
     assert.False(t, dialFunc.dialFuncCalled)
 
-    SetDialFunc(dialFunc.doDial)
-
-    client, err := NewAmqpClient(_DIAL_URL_TEST, &amqp.Config{})
+    client, err := NewAmqpClient(_DIAL_URL_TEST, &amqp.Config{}, dialFunc.doDial, nil)
 
     assert.NotNil(t, client.conn)
-    assert.True(t, _checkConnType(client.conn))
+    assert.True(t, _checkConnType(t, client.conn))
     assert.NoError(t, err)
     assert.Equal(t, _DIAL_URL_TEST, client.dialUrl)
     assert.NotNil(t, client.dialConfig)
     assert.True(t, dialFunc.dialFuncCalled)
+    assert.NotNil(t, client.logger)
+    _, ok := client.logger.Out.(*txLogger.NullLoggerWriter)
+    assert.True(t, ok)
+}
 
-    channelFunc := &_channelFuncT{}
-    assert.False(t, channelFunc.channelFuncCalled)
+func TestAmqpBasicConnectionWithLogger(t *testing.T) {
+    logger, _ := txLogger.CreateLogger(&txLogger.NullLoggerWriter{}, &txLogger.NullLoggerFormatter{}, "info")
+    client, _ := NewAmqpClient(_DIAL_URL_TEST, &amqp.Config{}, FakeAmqpDialFunc, logger)
+    assert.NotNil(t, client.logger)
+    _, ok := client.logger.Out.(*txLogger.NullLoggerWriter)
+    assert.True(t, ok)
+    _, ok = client.logger.Formatter.(*txLogger.TextFormatterWithPrefix)
+    assert.True(t, ok)
+    assert.Equal(t, "AmqpClient", client.logger.Formatter.(*txLogger.TextFormatterWithPrefix).LogPrefix)
+}
 
-    SetChannelFunc(channelFunc.getChannel)
+var _ IAmqpConnection   = (*FakeAmqpConnection)(nil)
+var _ IAmqpChannel      = (*FakeAmqpChannel)(nil)
 
-    channel, err := client.GetChannel()
-    assert.NoError(t, err)
-    assert.True(t, _checkChannelType(channel))
-    assert.True(t, channelFunc.channelFuncCalled)
+type FakeAmqpConnection struct {
+    closeChans  []chan *amqp.Error
+    closeWaiter chan struct{}
+    clock       *txUtils.FakeClock
+}
+
+func NewFakeAmqpConnection() *FakeAmqpConnection {
+    conn := &FakeAmqpConnection{
+        closeWaiter:    make(chan struct{}),
+        clock:          txUtils.NewFakeClock(),
+    }
+    return conn
+}
+
+func (fc *FakeAmqpConnection) Channel() (IAmqpChannel, error) {
+    return &FakeAmqpChannel{}, nil
+}
+
+func (fc *FakeAmqpConnection) NotifyClose(closeChan chan *amqp.Error) chan *amqp.Error {
+    fc.closeChans = append(fc.closeChans, closeChan)
+    fc.closeWaiter <- struct{}{}
+    return closeChan
+}
+
+func (fc *FakeAmqpConnection) GetClock() txUtils.IClock {
+    return fc.clock
+}
+
+func (fc *FakeAmqpConnection) WaitNotifyClose() {
+    <- fc.closeWaiter
+}
+
+func (fc *FakeAmqpConnection) TriggerClose(reason *amqp.Error) {
+    for len(fc.closeChans) > 0 {
+        closeChan := fc.closeChans[0]
+        fc.closeChans = fc.closeChans[1:]
+        closeChan <- reason
+    }
+}
+
+func FakeAmqpDialFunc(dialUrl string, dialConfig *amqp.Config) (IAmqpConnection, error) {
+    return NewFakeAmqpConnection(), nil
+}
+
+type FakeAmqpChannel struct {
+
+}
+
+func (c *FakeAmqpChannel) QueueDeclare(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) (amqp.Queue, error) {
+    return amqp.Queue{}, nil
+}
+
+func TestAmqpClientChannel(t *testing.T) {
+    client, err := NewAmqpClient(_DIAL_URL_TEST, &amqp.Config{}, FakeAmqpDialFunc, nil)
+
+    assert.NotNil(t, client)
+    assert.Nil(t, err)
+
+    channel, err := client.Channel()
+
+    assert.NotNil(t, channel)
+    assert.Nil(t, err)
+}
+
+type connectError struct {}
+
+func (ce *connectError) Error() string {
+    return "Connect Error"
+}
+
+func TestAmqpClientConnectError(t *testing.T) {
+    connectError := &connectError{}
+
+    dialFunc := func(dialUrl string, dialConfig *amqp.Config) (IAmqpConnection, error) {
+        return nil, connectError
+    }
+
+    client, err := NewAmqpClient(_DIAL_URL_TEST, &amqp.Config{}, dialFunc, nil)
+
+    assert.Nil(t, client)
+    assert.NotNil(t, err)
+    assert.ErrorIs(t, err, connectError)
+}
+
+func TestAmqpClientReconnect(t *testing.T) {
+    var reconnectError int32
+
+    dialFn := func(dialUrl string, dialConfig *amqp.Config) (IAmqpConnection, error) {
+        if atomic.LoadInt32(&reconnectError) == 0 {
+            return FakeAmqpDialFunc(dialUrl, dialConfig)
+        } else {
+            return nil, &connectError{}
+        }
+    }
+
+    client, _ := NewAmqpClient(_DIAL_URL_TEST, nil, dialFn, nil)
+
+    assert.NotNil(t, client)
+
+    conn := client.conn.(*FakeAmqpConnection)
+    conn.WaitNotifyClose()
+
+    assert.Equal(t, 1, len(conn.closeChans))
+
+    conn.TriggerClose(&amqp.Error{
+        Code:       302,
+        Reason:     "CONNECTION_FORCED - broker forced connection closure with reason 'shutdown'",
+        Server:     true,
+        Recover:    false,
+    })
+
+    assert.Empty(t, conn.closeChans)
+
+    conn.clock.WaitUntilBlock(1)
+
+    atomic.StoreInt32(&reconnectError, 1)
+    reconnectTimer := conn.clock.GetTimer(0)
+    timerStopped := reconnectTimer.WaitStop()
+
+    intervals := []time.Duration{
+        2 * time.Second,
+        4 * time.Second,
+        6 * time.Second,
+        8 * time.Second,
+        10 * time.Second,
+        2 * time.Second,
+        4 * time.Second,
+    }
+
+    for _, interval := range intervals {
+        rightNow := conn.clock.RightNow()
+        assert.Equal(t, rightNow + int64(interval), reconnectTimer.ExpireAt())
+        conn.clock.Advance(interval)
+        conn.clock.WaitUntilBlock(1)
+        assert.Equal(t, rightNow + int64(interval), conn.clock.RightNow())
+    }
+
+    rightNow := conn.clock.RightNow()
+    assert.Equal(t, rightNow + int64(6 * time.Second), reconnectTimer.ExpireAt())
+
+    atomic.StoreInt32(&reconnectError, 0)
+
+    conn.clock.Advance(6 * time.Second)
+    <- timerStopped
+
+    client.Channel()
+    assert.Equal(t, rightNow + int64(6 * time.Second), conn.clock.RightNow())
+
+    // check race
+    for i := 0; i < 100; i++ {
+        client.Channel()
+    }
+
+    assert.NotSame(t, client.conn, conn)
+    client.conn.(*FakeAmqpConnection).WaitNotifyClose()
+    assert.NotEmpty(t, client.conn.(*FakeAmqpConnection).closeChans)
+
+    assert.True(t, reconnectTimer.Stopped())
+    assert.NotNil(t, client.conn)
+
+    // check race
+    for i := 0; i < 100; i++ {
+        client.Channel()
+    }
 }

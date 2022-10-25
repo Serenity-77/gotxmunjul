@@ -59,11 +59,16 @@ func (fc *FakeClock) RightNow() int64 {
     return atomic.LoadInt64(&fc.rightNow)
 }
 
+func (fc *FakeClock) GetTimer(index int) *FakeTimer {
+    return fc.timers[index]
+}
+
 func (fc *FakeClock) timerLoop() {
     for {
         select {
         case timer := <- fc.timerChan:
             fc.timers = append(fc.timers, timer)
+            fc.sortTimers()
             fc.waitBlock <- struct{}{}
         case advance := <- fc.advance:
             fc.doAdvance(advance)
@@ -95,10 +100,12 @@ func (fc *FakeClock) Advance(duration time.Duration) {
 func (fc *FakeClock) doAdvance(advance advance) {
     atomic.AddInt64(&fc.rightNow, int64(advance.duration))
     fc.sortTimers()
-    for len(fc.timers) > 0 && fc.timers[0].expireAt <= fc.rightNow {
+    for len(fc.timers) > 0 && fc.timers[0].expireAt <= atomic.LoadInt64(&fc.rightNow) {
         timer := fc.timers[0]
         fc.timers = fc.timers[1:]
-        timer.c <- time.Unix(0, int64(fc.rightNow))
+        if atomic.LoadInt32(&timer.stopped) == 0 {
+            timer.c <- time.Unix(0, int64(fc.rightNow))
+        }
     }
     advance.b <- struct{}{}
 }
@@ -117,16 +124,41 @@ type FakeTimer struct {
     c           chan time.Time
     expireAt    int64
     fc          *FakeClock
+    stopped     int32
+    stopWaiters []chan struct{}
 }
 
 func (ft *FakeTimer) Reset(d time.Duration) bool {
     ft.expireAt = ft.fc.RightNow() + int64(d)
     ft.fc.timerChan <- ft
+    atomic.CompareAndSwapInt32(&ft.stopped, 1, 0)
     return true
 }
 
 func (ft *FakeTimer) Stop() bool {
-    return true
+    if atomic.CompareAndSwapInt32(&ft.stopped, 0, 1) {
+        for len(ft.stopWaiters) > 0 {
+            stop := ft.stopWaiters[0]
+            ft.stopWaiters = ft.stopWaiters[1:]
+            stop <- struct{}{}
+        }
+        return true
+    }
+    return false
+}
+
+func (ft *FakeTimer) ExpireAt() int64 {
+    return ft.expireAt
+}
+
+func (ft *FakeTimer) Stopped() bool {
+    return atomic.LoadInt32(&ft.stopped) == 1
+}
+
+func (ft *FakeTimer) WaitStop() <- chan struct{} {
+    stop := make(chan struct{})
+    ft.stopWaiters = append(ft.stopWaiters, stop)
+    return stop
 }
 
 type Timer struct {
