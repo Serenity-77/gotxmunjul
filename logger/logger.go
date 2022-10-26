@@ -28,6 +28,10 @@ func CreateLogger(out io.Writer, formatter logrus.Formatter, level string) (*log
     return logger, nil
 }
 
+func CreateFor(out io.Writer, prefix string, level string) (*logrus.Logger, error) {
+    return CreateLogger(out, &TextFormatterWithPrefix{LogPrefix: prefix}, level)
+}
+
 func DuplicateWithFormatter(logger *logrus.Logger, formatter logrus.Formatter) *logrus.Logger {
     dupLogger := logrus.New()
     dupLogger.SetOutput(logger.Out)
