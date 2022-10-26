@@ -47,7 +47,7 @@ func TestAmqpBasicConnection(t *testing.T) {
     dialFunc := &_dialFuncT{}
     assert.False(t, dialFunc.dialFuncCalled)
 
-    client, err := NewAmqpClient(_DIAL_URL_TEST, &amqp.Config{}, dialFunc.doDial, nil)
+    client, err := NewAmqpClientDialFunc(_DIAL_URL_TEST, &amqp.Config{}, dialFunc.doDial, nil)
 
     assert.NotNil(t, client.conn)
     assert.True(t, _checkConnType(t, client.conn))
@@ -68,7 +68,7 @@ func (nf *noOpLoggerFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 
 func TestAmqpBasicConnectionWithLogger(t *testing.T) {
     logger, _ := txLogger.CreateLogger(&txLogger.NullLoggerWriter{}, &noOpLoggerFormatter{}, "info")
-    client, _ := NewAmqpClient(_DIAL_URL_TEST, &amqp.Config{}, FakeAmqpDialFunc, logger)
+    client, _ := NewAmqpClientDialFunc(_DIAL_URL_TEST, &amqp.Config{}, FakeAmqpDialFunc, logger)
     assert.NotNil(t, client.logger)
     _, ok := client.logger.Out.(*txLogger.NullLoggerWriter)
     assert.True(t, ok)
@@ -132,7 +132,7 @@ func (c *FakeAmqpChannel) QueueDeclare(name string, durable, autoDelete, exclusi
 }
 
 func TestAmqpClientChannel(t *testing.T) {
-    client, err := NewAmqpClient(_DIAL_URL_TEST, &amqp.Config{}, FakeAmqpDialFunc, nil)
+    client, err := NewAmqpClientDialFunc(_DIAL_URL_TEST, &amqp.Config{}, FakeAmqpDialFunc, nil)
 
     assert.NotNil(t, client)
     assert.Nil(t, err)
@@ -156,7 +156,7 @@ func TestAmqpClientConnectError(t *testing.T) {
         return nil, connectError
     }
 
-    client, err := NewAmqpClient(_DIAL_URL_TEST, &amqp.Config{}, dialFunc, nil)
+    client, err := NewAmqpClientDialFunc(_DIAL_URL_TEST, &amqp.Config{}, dialFunc, nil)
 
     assert.Nil(t, client)
     assert.NotNil(t, err)
@@ -174,7 +174,7 @@ func TestAmqpClientReconnect(t *testing.T) {
         }
     }
 
-    client, _ := NewAmqpClient(_DIAL_URL_TEST, nil, dialFn, nil)
+    client, _ := NewAmqpClientDialFunc(_DIAL_URL_TEST, nil, dialFn, nil)
 
     assert.NotNil(t, client)
 

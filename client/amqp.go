@@ -63,7 +63,7 @@ func _defaultDialFunc(dialUrl string, dialConfig *amqp.Config) (IAmqpConnection,
     return &amqpConnection{conn, txUtils.NewRealClock()}, err
 }
 
-func NewAmqpClient(dialUrl string, dialConfig *amqp.Config, dialFunc AmqpDialFunc, logger *logrus.Logger) (*AmqpClient, error) {
+func NewAmqpClientDialFunc(dialUrl string, dialConfig *amqp.Config, dialFunc AmqpDialFunc, logger *logrus.Logger) (*AmqpClient, error) {
     client := &AmqpClient{
         dialUrl:    dialUrl,
         dialConfig: dialConfig,
@@ -90,6 +90,9 @@ func NewAmqpClient(dialUrl string, dialConfig *amqp.Config, dialFunc AmqpDialFun
     return client, nil
 }
 
+func NewAmqpClient(dialUrl string, dialConfig *amqp.Config, logger *logrus.Logger) (*AmqpClient, error) {
+    return NewAmqpClientDialFunc(dialUrl, dialConfig, _defaultDialFunc, logger)
+}
 
 func (c *AmqpClient) Channel() (IAmqpChannel, error) {
     c.mu.Lock()
