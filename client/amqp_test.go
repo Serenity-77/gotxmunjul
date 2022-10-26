@@ -83,6 +83,7 @@ type FakeAmqpConnection struct {
     closeChans  []chan *amqp.Error
     closeWaiter chan struct{}
     clock       *txUtils.FakeClock
+    lastError   *amqp.Error
 }
 
 func NewFakeAmqpConnection() *FakeAmqpConnection {
@@ -96,6 +97,16 @@ func NewFakeAmqpConnection() *FakeAmqpConnection {
 func (fc *FakeAmqpConnection) Channel() (IAmqpChannel, error) {
     return &FakeAmqpChannel{}, nil
 }
+
+func (fc *FakeAmqpConnection) Close() error {
+    for len(fc.closeChans) > 0 {
+        closeChan := fc.closeChans[0]
+        fc.closeChans = fc.closeChans[1:]
+        close(closeChan)
+    }
+    return fc.lastError
+}
+
 
 func (fc *FakeAmqpConnection) NotifyClose(closeChan chan *amqp.Error) chan *amqp.Error {
     fc.closeChans = append(fc.closeChans, closeChan)
@@ -112,6 +123,7 @@ func (fc *FakeAmqpConnection) WaitNotifyClose() {
 }
 
 func (fc *FakeAmqpConnection) TriggerClose(reason *amqp.Error) {
+    fc.lastError = reason
     for len(fc.closeChans) > 0 {
         closeChan := fc.closeChans[0]
         fc.closeChans = fc.closeChans[1:]
@@ -245,5 +257,75 @@ func TestAmqpClientReconnect(t *testing.T) {
     }
 }
 
+func assertDisconnected(t *testing.T, client *AmqpClient, loopStopped chan struct{}, disconnect chan struct{}) {
+    _, ok := <- loopStopped
+    assert.False(t, ok)
+    _, ok = <- disconnect
+    assert.False(t, ok)
+
+    assert.Nil(t, client.conn)
+    assert.Nil(t, client.logger)
+    assert.Nil(t, client.loopStopped)
+    assert.Nil(t, client.disconnect)
+}
+
+
 func TestAmqpClientDisconnect(t *testing.T) {
+    client, _ := NewAmqpClientDialFunc(_DIAL_URL_TEST, nil, FakeAmqpDialFunc, nil)
+
+    assert.NotNil(t, client)
+
+    loopStopped := client.loopStopped
+    disconnect := client.disconnect
+
+    client.conn.(*FakeAmqpConnection).WaitNotifyClose()
+
+    closeChan := client.conn.(*FakeAmqpConnection).closeChans[0]
+
+    err := client.Disconnect()
+
+    assert.Nil(t, err)
+
+    _, ok := <- closeChan
+    assert.False(t, ok)
+    assertDisconnected(t, client, loopStopped, disconnect)
+}
+
+func TestAmqpClientDisconnectWhileReconnecting(t *testing.T) {
+    client, _ := NewAmqpClientDialFunc(_DIAL_URL_TEST, nil, FakeAmqpDialFunc, nil)
+
+    assert.NotNil(t, client)
+
+    loopStopped := client.loopStopped
+    disconnect := client.disconnect
+
+    conn := client.conn.(*FakeAmqpConnection)
+    conn.WaitNotifyClose()
+
+    assert.Equal(t, 1, len(conn.closeChans))
+
+    conn.TriggerClose(&amqp.Error{
+        Code:       302,
+        Reason:     "CONNECTION_FORCED - broker forced connection closure with reason 'shutdown'",
+        Server:     true,
+        Recover:    false,
+    })
+
+    assert.Empty(t, conn.closeChans)
+
+    conn.clock.WaitUntilBlock(1)
+
+    reconnectTimer := conn.clock.GetTimer(0)
+
+    rightNow := conn.clock.RightNow()
+
+    assert.Equal(t, rightNow + int64(2 * time.Second), reconnectTimer.ExpireAt())
+
+    err := client.Disconnect()
+    
+    assert.NotNil(t, err)
+
+    assert.True(t, reconnectTimer.Stopped())
+
+    assertDisconnected(t, client, loopStopped, disconnect)
 }

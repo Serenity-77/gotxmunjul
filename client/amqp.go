@@ -15,6 +15,7 @@ var _ IAmqpChannel      = (*amqp.Channel)(nil)
 
 type IAmqpConnection interface {
     Channel()                       (IAmqpChannel, error)
+    Close()                         error
     NotifyClose(chan *amqp.Error)   chan *amqp.Error
     GetClock()                      txUtils.IClock
 }
@@ -24,14 +25,14 @@ type IAmqpChannel interface {
 }
 
 type AmqpClient struct {
-    conn        IAmqpConnection
-    mu          sync.Mutex
-    dialUrl     string
-    dialConfig  *amqp.Config
-    dialFunc    AmqpDialFunc
-    logger      *logrus.Logger
-    disconnect  chan struct{}
-
+    conn            IAmqpConnection
+    mu              sync.Mutex
+    dialUrl         string
+    dialConfig      *amqp.Config
+    dialFunc        AmqpDialFunc
+    logger          *logrus.Logger
+    disconnect      chan struct{}
+    loopStopped     chan struct{}
 }
 
 type AmqpDialFunc   func(string, *amqp.Config) (IAmqpConnection, error)
@@ -65,9 +66,11 @@ func _defaultDialFunc(dialUrl string, dialConfig *amqp.Config) (IAmqpConnection,
 
 func NewAmqpClientDialFunc(dialUrl string, dialConfig *amqp.Config, dialFunc AmqpDialFunc, logger *logrus.Logger) (*AmqpClient, error) {
     client := &AmqpClient{
-        dialUrl:    dialUrl,
-        dialConfig: dialConfig,
-        dialFunc:   dialFunc,
+        dialUrl:        dialUrl,
+        dialConfig:     dialConfig,
+        dialFunc:       dialFunc,
+        loopStopped:    make(chan struct{}),
+        disconnect:     make(chan struct{}),
     }
 
     if logger == nil {
@@ -78,6 +81,8 @@ func NewAmqpClientDialFunc(dialUrl string, dialConfig *amqp.Config, dialFunc Amq
 
     if err := client.doConnect(); err != nil {
         client.logger = nil
+        client.loopStopped = nil
+        client.disconnect = nil
         if client.dialConfig != nil {
             client.dialConfig = nil
         }
@@ -100,6 +105,25 @@ func (c *AmqpClient) Channel() (IAmqpChannel, error) {
     return c.conn.Channel()
 }
 
+func (c *AmqpClient) Disconnect() error {
+    c.mu.Lock()
+    conn := c.conn
+    c.mu.Unlock()
+
+    err := conn.Close()
+
+    close(c.disconnect)
+
+    <- c.loopStopped
+
+    c.conn = nil
+    c.logger = nil
+    c.loopStopped = nil
+    c.disconnect = nil
+
+    return err
+}
+
 func (c *AmqpClient) doConnect() error {
     if c.dialFunc == nil {
         c.dialFunc = _defaultDialFunc
@@ -115,20 +139,20 @@ func (c *AmqpClient) doConnect() error {
 }
 
 func (c *AmqpClient) waitClose() {
-    clock := c.conn.GetClock()
+    defer close(c.loopStopped)
 
     for {
         closeChan := c.conn.NotifyClose(make(chan *amqp.Error))
 
         if reason, ok := <- closeChan; !ok {
-
+            return
         } else {
             c.logger.Errorf("AmqpClient Disconnected: %#v", reason)
 
             connected := false
             reconnectInterval := 2
 
-            reconnectTimer := clock.Timer(time.Duration(reconnectInterval) * time.Second)
+            reconnectTimer := c.conn.GetClock().Timer(time.Duration(reconnectInterval) * time.Second)
 
             for !connected {
                 c.logger.Infof("Reconnecting AmqpClient in %d seconds", reconnectInterval)
@@ -149,7 +173,8 @@ func (c *AmqpClient) waitClose() {
                         c.logger.Infof("AmqpClient Connected")
                     }
                 case <- c.disconnect:
-
+                    reconnectTimer.Stop()
+                    return
                 }
             }
         }
