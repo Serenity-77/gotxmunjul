@@ -1,10 +1,12 @@
 package worker
 
+
 type Queue struct {
     queue       chan interface{}
     pending     []interface{}
     waiting     chan interface{}
     lchan       chan int
+    putWaiter   chan struct{}
     closeChan   chan struct{}
 }
 
@@ -14,13 +16,12 @@ func NewQueue() *Queue {
     q.waiting = make(chan interface{})
     q.lchan = make(chan int)
     q.closeChan = make(chan struct{})
-    go q._workerLoop()
+    go q._queueLoop()
     return q
 }
 
-
-func (q *Queue) _workerLoop() {
-    // make sure workerLoop goroutine is stopped
+func (q *Queue) _queueLoop() {
+    // make sure queue loop goroutine is stopped
     // so that no race can occurs.
     defer close(q.closeChan)
     defer close(q.waiting)
@@ -41,7 +42,7 @@ Loop:
                 select {
                 case q.waiting <- data:
                 default:
-                    q.pending = append(q.pending, data)
+                    q.addPending(data)
                 }
             }
         }
@@ -72,6 +73,10 @@ func (q *Queue) Close() {
     <- q.closeChan
 }
 
+func (q *Queue) addPending(data interface{}) {
+    q.pending = append(q.pending, data)
+}
+
 func (q *Queue) _processPending() bool {
     select {
     case q.lchan <- len(q.pending):
@@ -79,7 +84,7 @@ func (q *Queue) _processPending() bool {
         if !ok {
             return false
         }
-        q.pending = append(q.pending, data)
+        q.addPending(data)
     case q.waiting <- q.pending[0]:
         q.pending = q.pending[1:]
     }

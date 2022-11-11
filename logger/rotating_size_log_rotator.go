@@ -31,17 +31,6 @@ func RotatingSizeLogRotatorNew(maxRotateSize int64, maxRotateFiles int) *Rotatin
     }
 }
 
-// func (r *RotatingSizeLogRotator) init() error {
-//     err := r.setSize()
-//     if err != nil {
-//         return err
-//     }
-//     if r.MaxRotatedFiles == 0 {
-//         r.MaxRotatedFiles = 2
-//     }
-//     return nil
-// }
-//
 func (r *RotatingSizeLogRotator) setSize(path string) error {
     fileInfo, err := loggerFileStatFunc(path)
     if err != nil && !os.IsNotExist(err) {

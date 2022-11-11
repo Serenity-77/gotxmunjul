@@ -7,8 +7,8 @@ import (
     "github.com/stretchr/testify/assert"
     "github.com/sirupsen/logrus"
     amqp "github.com/rabbitmq/amqp091-go"
-    txLogger "github.com/serenity-77/gotxmunjul/logger"
-    txUtils  "github.com/serenity-77/gotxmunjul/utils"
+    txLogger "github.com/serenity-77/bagudung/logger"
+    txUtils  "github.com/serenity-77/bagudung/utils"
 )
 
 const (

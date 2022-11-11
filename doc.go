@@ -1,8 +1,8 @@
-package gotxmunjul
+package bagudung
 
 import (
-    _ "github.com/serenity-77/gotxmunjul/client"
-    _ "github.com/serenity-77/gotxmunjul/logger"
-    _ "github.com/serenity-77/gotxmunjul/utils"
-    _ "github.com/serenity-77/gotxmunjul/worker"
+    _ "github.com/serenity-77/bagudung/client"
+    _ "github.com/serenity-77/bagudung/logger"
+    _ "github.com/serenity-77/bagudung/utils"
+    _ "github.com/serenity-77/bagudung/worker"
 )

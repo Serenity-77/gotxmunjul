@@ -1,4 +1,4 @@
-module github.com/serenity-77/gotxmunjul
+module github.com/serenity-77/bagudung
 
 go 1.18
 

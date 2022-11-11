@@ -7,7 +7,7 @@ import (
 )
 
 
-func TestRunSimple(t *testing.T) {
+func TestQueueRunSimple(t *testing.T) {
     q := NewQueue()
     m := 5
 
@@ -43,7 +43,7 @@ func TestRunSimple(t *testing.T) {
     assert.ElementsMatch(t, expected, values)
 }
 
-func TestClose(t *testing.T) {
+func TestQueueClose(t *testing.T) {
     q := NewQueue()
     closed := 0
 
@@ -75,7 +75,7 @@ func TestClose(t *testing.T) {
     }
 }
 
-func TestCloseFinishPending(t *testing.T) {
+func TestQueueCloseFinishPending(t *testing.T) {
     q := NewQueue()
     waitClosed := make(chan struct{})
     wait := make(chan struct{})
@@ -122,6 +122,23 @@ func TestCloseFinishPending(t *testing.T) {
 
     select {
     case _, ok := <- q.closeChan:
+        assert.False(t, ok)
+    default:
+        assert.Fail(t, "Queue Not Closed")
+    }
+}
+
+func TestQueueCloseEmpty(t *testing.T) {
+    q := NewQueue()
+    q.Close()
+    select {
+    case _, ok := <- q.closeChan:
+        assert.False(t, ok)
+    default:
+        assert.Fail(t, "Queue Not Closed")
+    }
+    select {
+    case _, ok := <- q.waiting:
         assert.False(t, ok)
     default:
         assert.Fail(t, "Queue Not Closed")
