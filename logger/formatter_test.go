@@ -2,51 +2,69 @@ package logger
 
 
 import (
-    "fmt"
     "time"
     "testing"
     "github.com/stretchr/testify/assert"
-
     "github.com/sirupsen/logrus"
 )
 
 
-type FormatterWithPrefixWriter struct {
-    message []byte
+
+func TestBgdLogFormatterDefault(t *testing.T) {
+    formatter := &BgdLogFormatter{}
+    formatted, err := formatter.Format(&Entry{
+        Message:    "Hello World",
+        Time:       time.Date(2022, time.November, 15, 2, 35, 45, 0, time.UTC),
+        Level:      logrus.InfoLevel,
+    })
+
+    assert.Nil(t, err)
+    assert.Equal(t, "[2022-11-15 02:35:45] [INFO] Hello World", string(formatted))
 }
 
-
-func (wf *FormatterWithPrefixWriter) Write(b []byte) (int, error) {
-    wf.message = b
-    return len(b), nil
-}
-
-
-func TestTextFormatterWithPrefixWithPrefix(t *testing.T) {
-    doTestTextFormatterWithPrefix(t, "FooBar")
-    doTestTextFormatterWithPrefix(t, "")
-}
-
-
-func doTestTextFormatterWithPrefix(t *testing.T, logPrefix string) {
-    logger := logrus.New()
-
-    out := &FormatterWithPrefixWriter{}
-    logger.SetOutput(out)
-
-    formatter := &TextFormatterWithPrefix{}
-    logger.SetFormatter(formatter)
-
-    var expectedOutput = ""
-
-    if logPrefix != "" {
-        formatter.LogPrefix = logPrefix
-        expectedOutput = fmt.Sprintf("[%s] [FooBar:INFO] Hello World\n", time.Now().Format("2006-01-02 15:04:05"))
-    } else {
-        expectedOutput = fmt.Sprintf("[%s] [INFO] Hello World\n", time.Now().Format("2006-01-02 15:04:05"))
+func TestBgdLogFormatterCustomFormat(t *testing.T) {
+    formatter := &BgdLogFormatter{
+        LogFormat:  "{logLevel} {logTime} {logMessage}",
     }
 
-    logger.Info("Hello World")
+    formatted, err := formatter.Format(&Entry{
+        Message:    "Hello World",
+        Time:       time.Date(2022, time.November, 15, 2, 35, 45, 0, time.UTC),
+        Level:      logrus.InfoLevel,
+    })
 
-    assert.Equal(t, expectedOutput, string(out.message))
+    assert.Nil(t, err)
+    assert.Equal(t, "INFO 2022-11-15 02:35:45 Hello World", string(formatted))
+}
+
+func TestBgdLogFormatterWithPrefix(t *testing.T) {
+    formatter := &BgdLogFormatter{
+        LogFormat:  "{logLevel} {logTime} {logPrefix} {logMessage}",
+        LogPrefix:  "Hello-There",
+    }
+
+    formatted, err := formatter.Format(&Entry{
+        Message:    "Hello World",
+        Time:       time.Date(2022, time.November, 15, 2, 35, 45, 0, time.UTC),
+        Level:      logrus.InfoLevel,
+    })
+
+    assert.Nil(t, err)
+    assert.Equal(t, "INFO 2022-11-15 02:35:45 Hello-There Hello World", string(formatted))
+}
+
+
+func TestBgdLogFormatterEmptyPrefix(t *testing.T) {
+    formatter := &BgdLogFormatter{
+        LogFormat:  "{logLevel} {logTime} {logPrefix} {logMessage}",
+    }
+
+    formatted, err := formatter.Format(&Entry{
+        Message:    "Hello World",
+        Time:       time.Date(2022, time.November, 15, 2, 35, 45, 0, time.UTC),
+        Level:      logrus.InfoLevel,
+    })
+
+    assert.Nil(t, err)
+    assert.Equal(t, "INFO 2022-11-15 02:35:45  Hello World", string(formatted))
 }

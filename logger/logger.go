@@ -1,103 +1,206 @@
 package logger
 
 import (
-    "io"
-    "os"
-    "fmt"
-    "syscall"
-    "sync"
     "github.com/sirupsen/logrus"
 )
 
+func New() *Logger {
+    return logrus.New()
+}
 
-func CreateLogger(out io.Writer, formatter logrus.Formatter, level string) (*logrus.Logger, error) {
-    if formatter == nil {
-        return nil, fmt.Errorf("formatter parameter cannot be nil")
+type Logger     = logrus.Logger
+type Entry      = logrus.Entry
+type Level      = logrus.Level
+type Fields     = logrus.Fields
+type ILogger    = logrus.FieldLogger
+
+
+
+const (
+	PanicLevel Level       = logrus.PanicLevel
+	FatalLevel             = logrus.FatalLevel
+	ErrorLevel             = logrus.ErrorLevel
+	WarnLevel              = logrus.WarnLevel
+	InfoLevel              = logrus.InfoLevel
+	DebugLevel             = logrus.DebugLevel
+	TraceLevel             = logrus.TraceLevel
+)
+
+var _ ILogger = (*logWrapper)(nil)
+
+type logWrapper struct {
+    logger  ILogger
+}
+
+
+func (lw *logWrapper) WithField(key string, value interface{}) *Entry {
+    if lw.logger != nil {
+        return lw.logger.WithField(key, value)
     }
+    return &Entry{}
+}
 
-    logger := logrus.New()
-    logger.SetOutput(out)
-    logger.SetFormatter(formatter)
-
-    if logLevel, err := logrus.ParseLevel(level); err != nil {
-        return nil, err
-    } else {
-        logger.SetLevel(logLevel)
+func (lw *logWrapper) WithFields(fields Fields) *Entry {
+    if lw.logger != nil {
+        return lw.logger.WithFields(fields)
     }
-
-    return logger, nil
+    return &Entry{}
 }
 
-func CreateFor(out io.Writer, prefix string, level string) (*logrus.Logger, error) {
-    return CreateLogger(out, &TextFormatterWithPrefix{LogPrefix: prefix}, level)
-}
-
-func DuplicateWithFormatter(logger *logrus.Logger, formatter logrus.Formatter) *logrus.Logger {
-    dupLogger := logrus.New()
-    dupLogger.SetOutput(logger.Out)
-    dupLogger.SetFormatter(formatter)
-    dupLogger.SetLevel(logger.GetLevel())
-    return dupLogger
+func (lw *logWrapper) WithError(err error) *Entry {
+    if lw.logger != nil {
+        return lw.logger.WithError(err)
+    }
+    return &Entry{}
 }
 
 
-func DuplicateWithLogPrefix(logger *logrus.Logger, prefix string) *logrus.Logger {
-    formatter := &TextFormatterWithPrefix{}
-    formatter.LogPrefix = prefix
-    return DuplicateWithFormatter(logger, formatter)
+func (lw *logWrapper) Debugf(format string, args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Debugf(format, args...)
+    }
 }
 
-func RedirectStandardIO(logger *logrus.Logger) {
-    logFile := logger.Out.(*LogFile)
+func (lw *logWrapper) Infof(format string, args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Infof(format, args...)
+    }
+}
 
-    stdoutFd := int(os.Stdout.Fd())
-    stderrFd := int(os.Stderr.Fd())
-    logFileFd := int(logFile.fileIO.(*os.File).Fd())
+func (lw *logWrapper) Printf(format string, args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Printf(format, args...)
+    }
+}
 
-    syscall.Dup2(logFileFd, stdoutFd)
-    syscall.Dup2(logFileFd, stderrFd)
+func (lw *logWrapper) Warnf(format string, args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Warnf(format, args...)
+    }
+}
+
+func (lw *logWrapper) Warningf(format string, args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Warningf(format, args...)
+    }
+}
+
+func (lw *logWrapper) Errorf(format string, args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Errorf(format, args...)
+    }
+}
+
+func (lw *logWrapper) Fatalf(format string, args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Fatalf(format, args...)
+    }
+}
+
+func (lw *logWrapper) Panicf(format string, args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Panicf(format, args...)
+    }
+}
+
+func (lw *logWrapper) Debug(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Debug(args...)
+    }
+}
+
+func (lw *logWrapper) Info(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Info(args...)
+    }
+}
+
+func (lw *logWrapper) Print(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Println(args...)
+    }
+}
+
+func (lw *logWrapper) Warn(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Warn(args...)
+    }
+}
+
+func (lw *logWrapper) Warning(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Warning(args...)
+    }
+}
+
+func (lw *logWrapper) Error(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Error(args...)
+    }
+}
+
+func (lw *logWrapper) Fatal(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Fatal(args...)
+    }
+}
+
+func (lw *logWrapper) Panic(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Panic(args...)
+    }
+}
+
+func (lw *logWrapper) Debugln(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Debugln(args...)
+    }
+}
+
+func (lw *logWrapper) Infoln(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Infoln(args...)
+    }
+}
+
+func (lw *logWrapper) Println(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Println(args...)
+    }
+}
+
+func (lw *logWrapper) Warnln(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Warnln(args...)
+    }
+}
+
+func (lw *logWrapper) Warningln(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Warningln(args...)
+    }
+}
+
+func (lw *logWrapper) Errorln(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Errorln(args...)
+    }
 }
 
 
-type BufferedLoggerWriter struct {
-    m       sync.Mutex
-    items   [][]byte
+func (lw *logWrapper) Fatalln(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Fatalln(args...)
+    }
 }
 
-func (bw *BufferedLoggerWriter) Write(b []byte) (int, error) {
-    bw.m.Lock()
-    defer bw.m.Unlock()
-    bw.items = append(bw.items, b)
-    return len(b), nil
-}
-
-func (bw *BufferedLoggerWriter) AllItems() [][]byte {
-    bw.m.Lock()
-    defer bw.m.Unlock()
-    return bw.items
-}
-
-func (bw *BufferedLoggerWriter) Clear() {
-    bw.m.Lock()
-    defer bw.m.Unlock()
-    bw.items = nil
-}
-
-type NoLoggerFormatter struct{}
-
-func (nf *NoLoggerFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-    return []byte(entry.Message), nil
+func (lw *logWrapper) Panicln(args ...interface{}) {
+    if lw.logger != nil {
+        lw.logger.Panicln(args...)
+    }
 }
 
 
-type NullLoggerWriter struct {}
-
-func (nw *NullLoggerWriter) Write(b []byte) (int, error) {
-    return len(b), nil
-}
-
-type NullLoggerFormatter struct {}
-
-func (nf *NullLoggerFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-    return nil, nil
+func NewLogWrapper(logger ILogger) ILogger {
+    return &logWrapper{logger}
 }

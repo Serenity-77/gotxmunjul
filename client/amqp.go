@@ -30,7 +30,7 @@ type AmqpClient struct {
     dialUrl         string
     dialConfig      *amqp.Config
     dialFunc        AmqpDialFunc
-    logger          *logrus.Logger
+    logger          txLogger.ILogger
     disconnect      chan struct{}
     loopStopped     chan struct{}
 }
@@ -64,20 +64,15 @@ func _defaultDialFunc(dialUrl string, dialConfig *amqp.Config) (IAmqpConnection,
     return &amqpConnection{conn, txUtils.NewRealClock()}, err
 }
 
-func NewAmqpClientDialFunc(dialUrl string, dialConfig *amqp.Config, dialFunc AmqpDialFunc, logger *logrus.Logger) (*AmqpClient, error) {
+func NewAmqpClientDialFunc(dialUrl string, dialConfig *amqp.Config, dialFunc AmqpDialFunc, logger txLogger.ILogger) (*AmqpClient, error) {
     client := &AmqpClient{
         dialUrl:        dialUrl,
         dialConfig:     dialConfig,
         dialFunc:       dialFunc,
+        logger:         txLogger.NewLogWrapper(logger),
         loopStopped:    make(chan struct{}),
         disconnect:     make(chan struct{}),
     }
-
-    if logger == nil {
-        logger, _ = txLogger.CreateLogger(&txLogger.NullLoggerWriter{}, &txLogger.NullLoggerFormatter{}, "info")
-    }
-
-    client.logger = logger
 
     if err := client.doConnect(); err != nil {
         client.logger = nil

@@ -7,7 +7,6 @@ import (
     "github.com/stretchr/testify/assert"
     "github.com/sirupsen/logrus"
     amqp "github.com/rabbitmq/amqp091-go"
-    txLogger "github.com/serenity-77/bagudung/logger"
     txUtils  "github.com/serenity-77/bagudung/utils"
 )
 
@@ -56,24 +55,12 @@ func TestAmqpBasicConnection(t *testing.T) {
     assert.NotNil(t, client.dialConfig)
     assert.True(t, dialFunc.dialFuncCalled)
     assert.NotNil(t, client.logger)
-    _, ok := client.logger.Out.(*txLogger.NullLoggerWriter)
-    assert.True(t, ok)
 }
 
 type noOpLoggerFormatter struct{}
 
 func (nf *noOpLoggerFormatter) Format(entry *logrus.Entry) ([]byte, error) {
     return nil, nil
-}
-
-func TestAmqpBasicConnectionWithLogger(t *testing.T) {
-    logger, _ := txLogger.CreateLogger(&txLogger.NullLoggerWriter{}, &noOpLoggerFormatter{}, "info")
-    client, _ := NewAmqpClientDialFunc(_DIAL_URL_TEST, &amqp.Config{}, FakeAmqpDialFunc, logger)
-    assert.NotNil(t, client.logger)
-    _, ok := client.logger.Out.(*txLogger.NullLoggerWriter)
-    assert.True(t, ok)
-    _, ok = client.logger.Formatter.(*noOpLoggerFormatter)
-    assert.True(t, ok)
 }
 
 var _ IAmqpConnection   = (*FakeAmqpConnection)(nil)
@@ -322,7 +309,7 @@ func TestAmqpClientDisconnectWhileReconnecting(t *testing.T) {
     assert.Equal(t, rightNow + int64(2 * time.Second), reconnectTimer.ExpireAt())
 
     err := client.Disconnect()
-    
+
     assert.NotNil(t, err)
 
     assert.True(t, reconnectTimer.Stopped())
