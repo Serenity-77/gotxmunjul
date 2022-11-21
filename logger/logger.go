@@ -12,6 +12,7 @@ type Logger     = logrus.Logger
 type Entry      = logrus.Entry
 type Level      = logrus.Level
 type Fields     = logrus.Fields
+type IFormatter = logrus.Formatter
 type ILogger    = logrus.FieldLogger
 
 
