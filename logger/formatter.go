@@ -67,7 +67,7 @@ func (f *BgdLogFormatter) Format(entry *Entry) ([]byte, error) {
     }
 
     replacer := strings.NewReplacer(args...)
-    logString := replacer.Replace(logFormat)
+    logString := replacer.Replace(logFormat) + "\n"
 
     return []byte(logString), nil
 }

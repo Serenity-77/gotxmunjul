@@ -19,7 +19,7 @@ func TestBgdLogFormatterDefault(t *testing.T) {
     })
 
     assert.Nil(t, err)
-    assert.Equal(t, "[2022-11-15 02:35:45] [INFO] Hello World", string(formatted))
+    assert.Equal(t, "[2022-11-15 02:35:45] [INFO] Hello World\n", string(formatted))
 }
 
 func TestBgdLogFormatterCustomFormat(t *testing.T) {
@@ -34,7 +34,7 @@ func TestBgdLogFormatterCustomFormat(t *testing.T) {
     })
 
     assert.Nil(t, err)
-    assert.Equal(t, "INFO 2022-11-15 02:35:45 Hello World", string(formatted))
+    assert.Equal(t, "INFO 2022-11-15 02:35:45 Hello World\n", string(formatted))
 }
 
 func TestBgdLogFormatterWithPrefix(t *testing.T) {
@@ -50,7 +50,7 @@ func TestBgdLogFormatterWithPrefix(t *testing.T) {
     })
 
     assert.Nil(t, err)
-    assert.Equal(t, "INFO 2022-11-15 02:35:45 Hello-There Hello World", string(formatted))
+    assert.Equal(t, "INFO 2022-11-15 02:35:45 Hello-There Hello World\n", string(formatted))
 }
 
 
@@ -66,5 +66,5 @@ func TestBgdLogFormatterEmptyPrefix(t *testing.T) {
     })
 
     assert.Nil(t, err)
-    assert.Equal(t, "INFO 2022-11-15 02:35:45  Hello World", string(formatted))
+    assert.Equal(t, "INFO 2022-11-15 02:35:45  Hello World\n", string(formatted))
 }
