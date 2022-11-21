@@ -90,7 +90,7 @@ func NewAmqpClientDialFunc(dialUrl string, dialConfig *amqp.Config, dialFunc Amq
     return client, nil
 }
 
-func NewAmqpClient(dialUrl string, dialConfig *amqp.Config, logger *logrus.Logger) (*AmqpClient, error) {
+func NewAmqpClient(dialUrl string, dialConfig *amqp.Config, logger ILogger) (*AmqpClient, error) {
     return NewAmqpClientDialFunc(dialUrl, dialConfig, _defaultDialFunc, logger)
 }
 
